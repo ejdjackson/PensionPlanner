@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Pension Calculator</title>
+    <!-- Include the Roboto font for better appearance -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto&display=swap">
+    <link rel="stylesheet" type="text/css" href="styles.css">
+    <!-- Include Chart.js library -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>Pension Calculator</h1>
+        <div class="content">
+            <div class="form-container">
+                <form id="pensionForm">
+                    <div class="form-group">
+                        <label for="currentAge">Current Age:</label>
+                        <input type="number" id="currentAge" name="currentAge" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="retirementAge">Retirement Age:</label>
+                        <input type="number" id="retirementAge" name="retirementAge" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="endAge">End of Projection Age:</label>
+                        <input type="number" id="endAge" name="endAge" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="currentFund">Current Fund (£):</label>
+                        <input type="number" id="currentFund" name="currentFund" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="desiredPension">Desired Monthly Pension (£):</label>
+                        <input type="number" id="desiredPension" name="desiredPension" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="investmentReturn">Investment Return (%):</label>
+                        <input type="number" id="investmentReturn" name="investmentReturn" required>
+                    </div>
+
+                    <button type="button" id="calculateButton" onclick="calculatePension()">Calculate</button>
+                </form>
+            </div>
+
+            <div class="graph-container">
+                <h2>Results</h2>
+                <p id="requiredContribution"></p>
+                <canvas id="fundChart"></canvas>
+            </div>
+        </div>
+
+        <h2>Cash Flow Table</h2>
+        <div class="table-responsive">
+            <table id="cashFlowTable">
+                <thead>
+                    <tr>
+                        <th>Age</th>
+                        <th>Opening Balance (£)</th>
+                        <th>Contribution (£)</th>
+                        <th>Pension Withdrawal (£)</th>
+                        <th>Investment Return (£)</th>
+                        <th>Closing Balance (£)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Rows will be added here dynamically -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        function calculatePension() {
+            // Get inputs
+            var currentAge = parseInt(document.getElementById("currentAge").value);
+            var retirementAge = parseInt(document.getElementById("retirementAge").value);
+            var endAge = parseInt(document.getElementById("endAge").value);
+            var currentFund = parseFloat(document.getElementById("currentFund").value);
+            var desiredMonthlyPension = parseFloat(document.getElementById("desiredPension").value);
+            var investmentReturn = parseFloat(document.getElementById("investmentReturn").value) / 100;
+            var inflation = 0.02; // Fixed at 2%
+    
+            // Validate inputs
+            if (isNaN(currentAge) || isNaN(retirementAge) || isNaN(endAge) || isNaN(currentFund) || isNaN(desiredMonthlyPension) || isNaN(investmentReturn)) {
+                alert("Please enter valid numbers in all fields.");
+                return;
+            }
+    
+            if (currentAge >= retirementAge || retirementAge > endAge) {
+                alert("Ensure that Current Age < Retirement Age ≤ End of Projection Age.");
+                return;
+            }
+    
+            // Desired annual pension
+            var desiredAnnualPension = desiredMonthlyPension * 12;
+    
+            // First, check if the current fund is sufficient to provide the desired pension without any more contributions
+            var annualContribution = 0; // No contributions
+    
+            // Find the maximum affordable pension with no contributions
+            var maxPension = findMaximumPension(currentAge, retirementAge, endAge, currentFund, investmentReturn, inflation);
+    
+            if (maxPension >= desiredAnnualPension) {
+                // Fund is sufficient
+                document.getElementById("requiredContribution").innerHTML = "Your current fund is already sufficient to provide your desired pension without any more contributions.<br><br>With no further contributions your pension could be <strong>£" + formatNumber(Math.round(maxPension / 12)) + " per month</strong>.";
+    
+                // Simulate fund with desired pension and no contributions
+                var simulation = simulateFund(currentAge, retirementAge, endAge, currentFund, annualContribution, investmentReturn, inflation, desiredAnnualPension);
+    
+                // Plot chart and display table
+                plotChart(simulation);
+                displayCashFlowTable(simulation.cashFlowData);
+    
+            } else {
+                // Fund is not sufficient, need to calculate required annual contribution
+                var requiredContribution = findRequiredContribution(currentAge, retirementAge, endAge, currentFund, desiredAnnualPension, investmentReturn, inflation);
+    
+                if (requiredContribution === null) {
+                    alert("Could not find a suitable contribution amount within the maximum iterations.");
+                    return;
+                }
+    
+                var requiredMonthlyContribution = requiredContribution / 12;
+                document.getElementById("requiredContribution").innerHTML = "⚠️ Required Monthly Contribution: <strong>£" + formatNumber(Math.round(requiredMonthlyContribution)) + "</strong>";
+    
+                // Simulate fund with required contribution
+                var simulation = simulateFund(currentAge, retirementAge, endAge, currentFund, requiredContribution, investmentReturn, inflation, desiredAnnualPension);
+    
+                // Plot chart and display table
+                plotChart(simulation);
+                displayCashFlowTable(simulation.cashFlowData);
+            }
+    
+            // Change button label to 'Recalculate' after first click
+            document.getElementById("calculateButton").innerText = "Recalculate";
+        }
+    
+        function findMaximumPension(currentAge, retirementAge, endAge, currentFund, investmentReturn, inflation) {
+            var tol = 0.01; // Tolerance
+            var maxIter = 100;
+            var iter = 0;
+    
+            var pensionLower = 0;
+            var pensionUpper = currentFund * (1 + investmentReturn) ** (endAge - currentAge);
+    
+            var maxPension = 0;
+            var finalFundBalance = 0;
+    
+            while (iter < maxIter) {
+                maxPension = (pensionLower + pensionUpper) / 2;
+                var simulation = simulateFund(currentAge, retirementAge, endAge, currentFund, 0, investmentReturn, inflation, maxPension);
+                finalFundBalance = simulation.finalFundBalance;
+    
+                if (Math.abs(finalFundBalance) < tol) {
+                    break;
+                }
+    
+                if (finalFundBalance > 0) {
+                    // Pension amount too low
+                    pensionLower = maxPension;
+                } else {
+                    // Pension amount too high
+                    pensionUpper = maxPension;
+                }
+    
+                iter++;
+            }
+    
+            return maxPension;
+        }
+    
+        function findRequiredContribution(currentAge, retirementAge, endAge, currentFund, desiredAnnualPension, investmentReturn, inflation) {
+            var tol = 0.01; // Tolerance for final fund balance
+            var maxIter = 100;
+            var iter = 0;
+    
+            var contributionLower = 0;
+            var contributionUpper = 1e6; // An upper limit for annual contribution
+    
+            var requiredContribution = 0;
+            var finalFundBalance = 0;
+    
+            while (iter < maxIter) {
+                requiredContribution = (contributionLower + contributionUpper) / 2;
+                var simulation = simulateFund(currentAge, retirementAge, endAge, currentFund, requiredContribution, investmentReturn, inflation, desiredAnnualPension);
+                finalFundBalance = simulation.finalFundBalance;
+    
+                if (Math.abs(finalFundBalance) < tol) {
+                    return requiredContribution;
+                }
+    
+                if (finalFundBalance > 0) {
+                    // Contribution amount too high
+                    contributionUpper = requiredContribution;
+                } else {
+                    // Contribution amount too low
+                    contributionLower = requiredContribution;
+                }
+    
+                iter++;
+            }
+    
+            // If we reach here, no suitable contribution was found
+            return null;
+        }
+    
+        function simulateFund(currentAge, retirementAge, endAge, currentFund, annualContribution, investmentReturn, inflation, desiredAnnualPension) {
+            var fund = currentFund;
+            var fundHistory = [];
+            var ageHistory = [];
+            var cashFlowData = [];
+            var pension = desiredAnnualPension;
+    
+            // Accumulation phase
+            for (var age = currentAge; age < retirementAge; age++) {
+                var openingBalance = fund;
+                var contribution = annualContribution;
+                var withdrawal = 0;
+                var investmentGain = fund * investmentReturn;
+                fund = fund + investmentGain + contribution;
+                var closingBalance = fund;
+    
+                fundHistory.push(Math.round(closingBalance));
+                ageHistory.push(age);
+    
+                cashFlowData.push({
+                    age: age,
+                    openingBalance: openingBalance,
+                    contribution: contribution,
+                    withdrawal: withdrawal,
+                    investmentReturn: investmentGain,
+                    closingBalance: closingBalance
+                });
+            }
+    
+            // Drawdown phase
+            for (var age = retirementAge; age <= endAge; age++) {
+                var openingBalance = fund;
+                var contribution = 0;
+                var withdrawal = pension;
+                var investmentGain = fund * investmentReturn;
+                fund = fund + investmentGain - withdrawal;
+                var closingBalance = fund;
+    
+                fundHistory.push(Math.round(closingBalance));
+                ageHistory.push(age);
+    
+                cashFlowData.push({
+                    age: age,
+                    openingBalance: openingBalance,
+                    contribution: contribution,
+                    withdrawal: withdrawal,
+                    investmentReturn: investmentGain,
+                    closingBalance: closingBalance
+                });
+    
+                if (fund < 0) {
+                    // Fund depleted before end age
+                    break;
+                }
+    
+                // Increase pension with inflation
+                pension = pension * (1 + inflation);
+            }
+    
+            var finalFundBalance = fund;
+            return {
+                finalFundBalance: finalFundBalance,
+                fundHistory: fundHistory,
+                ageHistory: ageHistory,
+                cashFlowData: cashFlowData
+            };
+        }
+    
+        function plotChart(simulation) {
+            var ctx = document.getElementById('fundChart').getContext('2d');
+            var chartData = {
+                labels: simulation.ageHistory,
+                datasets: [{
+                    label: 'Fund Value (£)',
+                    data: simulation.fundHistory,
+                    borderColor: '#1565c0', // Navy Blue
+                    backgroundColor: 'rgba(21, 101, 192, 0.2)', // Light Blue
+                    fill: true,
+                    tension: 0.1
+                }]
+            };
+    
+            if (window.myLineChart) {
+                window.myLineChart.destroy();
+            }
+    
+            window.myLineChart = new Chart(ctx, {
+                type: 'line',
+                data: chartData,
+                options: {
+                    responsive: true,
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Age'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Fund Value (£)'
+                            },
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+    
+        function displayCashFlowTable(cashFlowData) {
+            var tableBody = document.getElementById('cashFlowTable').getElementsByTagName('tbody')[0];
+            tableBody.innerHTML = ''; // Clear previous data
+    
+            cashFlowData.forEach(function (row) {
+                var tr = document.createElement('tr');
+    
+                var tdAge = document.createElement('td');
+                tdAge.textContent = row.age;
+                tr.appendChild(tdAge);
+    
+                var tdOpening = document.createElement('td');
+                tdOpening.textContent = '£' + formatNumber(Math.round(row.openingBalance));
+                tr.appendChild(tdOpening);
+    
+                var tdContribution = document.createElement('td');
+                tdContribution.textContent = '£' + formatNumber(Math.round(row.contribution));
+                tr.appendChild(tdContribution);
+    
+                var tdWithdrawal = document.createElement('td');
+                tdWithdrawal.textContent = '£' + formatNumber(Math.round(row.withdrawal));
+                tr.appendChild(tdWithdrawal);
+    
+                var tdInvestmentReturn = document.createElement('td');
+                tdInvestmentReturn.textContent = '£' + formatNumber(Math.round(row.investmentReturn));
+                tr.appendChild(tdInvestmentReturn);
+    
+                var tdClosing = document.createElement('td');
+                tdClosing.textContent = '£' + formatNumber(Math.round(row.closingBalance));
+                tr.appendChild(tdClosing);
+    
+                tableBody.appendChild(tr);
+            });
+        }
+    
+        function formatNumber(num) {
+            return num.toLocaleString('en-UK');
+        }
+    </script>
+    
+</body>
+</html>
