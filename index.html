@@ -10,7 +10,7 @@
 </head>
 <body>
     <div class="container">
-        <h1>Pension Calculator</h1>
+        <h1>Pension Planner</h1>
         <div class="content">
             <div class="form-container">
                 <form id="pensionForm">
@@ -44,6 +44,12 @@
                         <input type="number" id="investmentReturn" name="investmentReturn" required>
                     </div>
 
+                    <div class="form-group">
+                        <label for="fundCharges">Fund Charges (%):</label>
+                        <input type="number" id="fundCharges" name="fundCharges" required>
+                    </div>
+                    
+
                     <button type="button" id="calculateButton" onclick="calculatePension()">Calculate</button>
                 </form>
             </div>
@@ -65,6 +71,7 @@
                         <th>Contribution (£)</th>
                         <th>Pension Withdrawal (£)</th>
                         <th>Investment Return (£)</th>
+                        <th>Fund Charges (£)</th>
                         <th>Closing Balance (£)</th>
                     </tr>
                 </thead>
@@ -84,6 +91,7 @@
             var currentFund = parseFloat(document.getElementById("currentFund").value);
             var desiredMonthlyPension = parseFloat(document.getElementById("desiredPension").value);
             var investmentReturn = parseFloat(document.getElementById("investmentReturn").value) / 100;
+            var fundCharges = parseFloat(document.getElementById("fundCharges").value) / 100;
             var inflation = 0.02; // Fixed at 2%
     
             // Validate inputs
@@ -104,14 +112,14 @@
             var annualContribution = 0; // No contributions
     
             // Find the maximum affordable pension with no contributions
-            var maxPension = findMaximumPension(currentAge, retirementAge, endAge, currentFund, investmentReturn, inflation);
+            var maxPension = findMaximumPension(currentAge, retirementAge, endAge, currentFund, investmentReturn, fundCharges, inflation);
     
             if (maxPension >= desiredAnnualPension) {
                 // Fund is sufficient
                 document.getElementById("requiredContribution").innerHTML = "Your current fund is already sufficient to provide your desired pension without any more contributions.<br><br>With no further contributions your pension could be <strong>£" + formatNumber(Math.round(maxPension / 12)) + " per month</strong>.";
     
                 // Simulate fund with desired pension and no contributions
-                var simulation = simulateFund(currentAge, retirementAge, endAge, currentFund, annualContribution, investmentReturn, inflation, desiredAnnualPension);
+                var simulation = simulateFund(currentAge, retirementAge, endAge, currentFund, annualContribution, investmentReturn, fundCharges, inflation, desiredAnnualPension);
     
                 // Plot chart and display table
                 plotChart(simulation);
@@ -119,7 +127,7 @@
     
             } else {
                 // Fund is not sufficient, need to calculate required annual contribution
-                var requiredContribution = findRequiredContribution(currentAge, retirementAge, endAge, currentFund, desiredAnnualPension, investmentReturn, inflation);
+                var requiredContribution = findRequiredContribution(currentAge, retirementAge, endAge, currentFund, desiredAnnualPension, investmentReturn, fundCharges, inflation);
     
                 if (requiredContribution === null) {
                     alert("Could not find a suitable contribution amount within the maximum iterations.");
@@ -130,7 +138,7 @@
                 document.getElementById("requiredContribution").innerHTML = "⚠️ Required Monthly Contribution: <strong>£" + formatNumber(Math.round(requiredMonthlyContribution)) + "</strong>";
     
                 // Simulate fund with required contribution
-                var simulation = simulateFund(currentAge, retirementAge, endAge, currentFund, requiredContribution, investmentReturn, inflation, desiredAnnualPension);
+                var simulation = simulateFund(currentAge, retirementAge, endAge, currentFund, requiredContribution, investmentReturn, fundCharges, inflation, desiredAnnualPension);
     
                 // Plot chart and display table
                 plotChart(simulation);
@@ -141,7 +149,7 @@
             document.getElementById("calculateButton").innerText = "Recalculate";
         }
     
-        function findMaximumPension(currentAge, retirementAge, endAge, currentFund, investmentReturn, inflation) {
+        function findMaximumPension(currentAge, retirementAge, endAge, currentFund, investmentReturn, fundCharges, inflation) {
             var tol = 0.01; // Tolerance
             var maxIter = 100;
             var iter = 0;
@@ -154,7 +162,7 @@
     
             while (iter < maxIter) {
                 maxPension = (pensionLower + pensionUpper) / 2;
-                var simulation = simulateFund(currentAge, retirementAge, endAge, currentFund, 0, investmentReturn, inflation, maxPension);
+                var simulation = simulateFund(currentAge, retirementAge, endAge, currentFund, 0, investmentReturn, fundCharges, inflation, maxPension);
                 finalFundBalance = simulation.finalFundBalance;
     
                 if (Math.abs(finalFundBalance) < tol) {
@@ -175,7 +183,7 @@
             return maxPension;
         }
     
-        function findRequiredContribution(currentAge, retirementAge, endAge, currentFund, desiredAnnualPension, investmentReturn, inflation) {
+        function findRequiredContribution(currentAge, retirementAge, endAge, currentFund, desiredAnnualPension, investmentReturn, fundCharges, inflation) {
             var tol = 0.01; // Tolerance for final fund balance
             var maxIter = 100;
             var iter = 0;
@@ -188,7 +196,7 @@
     
             while (iter < maxIter) {
                 requiredContribution = (contributionLower + contributionUpper) / 2;
-                var simulation = simulateFund(currentAge, retirementAge, endAge, currentFund, requiredContribution, investmentReturn, inflation, desiredAnnualPension);
+                var simulation = simulateFund(currentAge, retirementAge, endAge, currentFund, requiredContribution, investmentReturn, fundCharges, inflation, desiredAnnualPension);
                 finalFundBalance = simulation.finalFundBalance;
     
                 if (Math.abs(finalFundBalance) < tol) {
@@ -210,7 +218,7 @@
             return null;
         }
     
-        function simulateFund(currentAge, retirementAge, endAge, currentFund, annualContribution, investmentReturn, inflation, desiredAnnualPension) {
+        function simulateFund(currentAge, retirementAge, endAge, currentFund, annualContribution, investmentReturn, fundCharges, inflation, desiredAnnualPension) {
             var fund = currentFund;
             var fundHistory = [];
             var ageHistory = [];
@@ -223,7 +231,8 @@
                 var contribution = annualContribution;
                 var withdrawal = 0;
                 var investmentGain = fund * investmentReturn;
-                fund = fund + investmentGain + contribution;
+                var fundChargesTaken = fund * fundCharges;
+                fund = fund + investmentGain + contribution - fundChargesTaken;
                 var closingBalance = fund;
     
                 fundHistory.push(Math.round(closingBalance));
@@ -235,6 +244,7 @@
                     contribution: contribution,
                     withdrawal: withdrawal,
                     investmentReturn: investmentGain,
+                    fundCharges: fundChargesTaken,
                     closingBalance: closingBalance
                 });
             }
@@ -245,6 +255,7 @@
                 var contribution = 0;
                 var withdrawal = pension;
                 var investmentGain = fund * investmentReturn;
+                var fundChargesTaken = fund * fundCharges;
                 fund = fund + investmentGain - withdrawal;
                 var closingBalance = fund;
     
@@ -257,6 +268,7 @@
                     contribution: contribution,
                     withdrawal: withdrawal,
                     investmentReturn: investmentGain,
+                    fundCharges: fundChargesTaken,
                     closingBalance: closingBalance
                 });
     
@@ -346,7 +358,11 @@
                 var tdInvestmentReturn = document.createElement('td');
                 tdInvestmentReturn.textContent = '£' + formatNumber(Math.round(row.investmentReturn));
                 tr.appendChild(tdInvestmentReturn);
-    
+
+                var tdFundCharges = document.createElement('td');
+                tdFundCharges.textContent = '£' + formatNumber(Math.round(row.fundCharges));
+                tr.appendChild(tdFundCharges);
+   
                 var tdClosing = document.createElement('td');
                 tdClosing.textContent = '£' + formatNumber(Math.round(row.closingBalance));
                 tr.appendChild(tdClosing);

@@ -8,7 +8,7 @@
 }
 
 body {
-    font-family: 'Courier New', Courier, monospace; /* Old typewriter font */
+    font-family: Arial, sans-serif; /* Old typewriter font */
     background-color: #b0b0b0; /* Medium grey screen background */
 }
 
@@ -94,7 +94,7 @@ button {
     padding: 12px;
     background-color: #42a5f5; /* Light blue button */
     color: #ffffff; /* White text */
-    border: none;
+    border: 2px solid #535353;
     border-radius: 4px;
     font-size: 16px;
     cursor: pointer;
@@ -120,8 +120,8 @@ canvas {
 .table-responsive {
     overflow-x: auto;
     margin-top: 20px;
-    border: 2px solid #dddddd; /* Stronger border around the table */
-    border-radius: 8px;
+    border: 1px solid #000000; /* Stronger border around the table */
+    border-radius: 4px;
 }
 
 table {
@@ -132,6 +132,7 @@ table {
 table thead {
     background-color: #42a5f5; /* Light blue header */
     color: #ffffff; /* White text */
+    font-size: small;
 }
 
 table th, table td {
